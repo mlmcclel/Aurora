@@ -152,6 +152,9 @@ private:
     float _maxLuminanceExposure = 0.0f;
 #endif
     bool _shouldRestart   = true;
+    bool _writePerfData   = false;
+    bool _writeOutputAtComplete = false;
+    string _outputFile          = "";
     vector<string> _units = { "millimeter", "centimeter", "inch", "foot", "yard" };
 #if defined(INTERACTIVE_PLASMA)
     int _currentUnitIndex = 1;

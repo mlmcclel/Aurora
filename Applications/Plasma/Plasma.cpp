@@ -60,6 +60,18 @@ Plasma::Plasma(HINSTANCE hInstance, unsigned int width, unsigned int height)
         // Add the status report from the performance monitor.
         report << message;
 
+        if (_writePerfData == true)
+        {
+            ofstream filePtr;
+            filePtr.open("plasma_perf.log", ios::app);
+
+            string dataToWrite = report.str();
+            dataToWrite.append("\n");
+            filePtr << dataToWrite.c_str();
+
+            filePtr.close();
+        }
+
         // Set the complete report as the window title.
         ::SetWindowTextW(_hwnd, Foundation::s2w(report.str()).c_str());
     });
@@ -353,7 +365,10 @@ void Plasma::parseOptions(int argc, char* argv[])
         ("fov", "Camera field of view in degrees.", cxxopts::value<float>())
         ("env", "Environment map path to load (lat-long format .HDR file)", cxxopts::value<string>())
         ("mtlx", "MaterialX document path to apply.",cxxopts::value<string>())
-        ("loadMtlXForObj", "Try and load MaterialX documents for each OBJ material.",  cxxopts::value<bool>())
+        ("perf", "Dump performance data to a file")
+        ("animate", "Start Render with animation TRUE")
+		("oidn", "Enable OIDN device (cpu or gpu), disabled by default", cxxopts::value<string>())
+	    ("loadMtlXForObj", "Try and load MaterialX documents for each OBJ material.",  cxxopts::value<bool>())
         ("h,help", "Print help");
     // clang-format on
 
@@ -400,6 +415,21 @@ bool Plasma::initialize()
     _hwnd = createWindow(_dimensions);
     ::setMessageWindow(_hwnd);
 #endif
+
+
+    // If the animate argument is supplied, start animation.
+    if (_pArguments->count("animate"))
+    {
+        _isAnimating           = true;
+    }
+    
+    // If the perf argument is supplied, start a log file.
+    if (_pArguments->count("perf"))
+    {
+        _writePerfData = true;
+        _writeOutputAtComplete = true;
+    }
+
 
     // Parse the backend type from the argument for the "renderer" parameter: "dx" or "hgi".
     if (_pArguments->count("renderer"))
@@ -523,6 +553,17 @@ bool Plasma::initialize()
     {
         string filePath = arguments["scene"].as<string>();
         bFileLoaded     = loadSceneFile(filePath);
+        if (_writePerfData == true)
+        {
+            ofstream filePtr;
+            filePtr.open("plasma_perf.log", ios::app);
+
+            string dataToWrite = filePath;
+            dataToWrite.append("\n");
+            filePtr << dataToWrite.c_str();
+
+            filePtr.close();
+        }
     }
 
     // Get the MaterialX file path from the mtlx argument.
@@ -584,14 +625,29 @@ bool Plasma::initialize()
     // If output is set render single frame then exit.
     if (_pArguments->count("output"))
     {
-        string outputFile = arguments["output"].as<string>();
-        saveImage(Foundation::s2w(outputFile), uvec2(_dimensions.x, _dimensions.y));
-        AU_INFO("Output command line option is set. Rendered one image to %s, now exiting.",
-            outputFile.c_str());
+        if (_writeOutputAtComplete)
+        {
+            _outputFile = arguments["output"].as<string>();
+            // Create an Aurora window, which can be used to render into the application window.
+            _pWindow = _pRenderer->createWindow(_hwnd, _dimensions.x, _dimensions.y);
+            if (!_pWindow)
+            {
+                return false;
+            }
+            _pRenderer->setTargets({ { Aurora::AOV::kFinal, _pWindow } });            
+        }
+        else
+        {
+            string outputFile = arguments["output"].as<string>();
+            _outputFile       = outputFile;
+            saveImage(Foundation::s2w(outputFile), uvec2(_dimensions.x, _dimensions.y));
+            AU_INFO("Output command line option is set. Rendered one image to %s, now exiting.",
+                outputFile.c_str());
 
 #if defined(INTERACTIVE_PLASMA)
         PostMessage(_hwnd, WM_CLOSE, 0, 0);
 #endif
+        }
     }
 #if defined(INTERACTIVE_PLASMA)
     else
@@ -834,9 +890,25 @@ void Plasma::update()
     bool isComplete = _sampleCounter.isComplete();
     if (isComplete)
     {
+
+        // If output is set render single frame then exit.
+        if (_pArguments->count("output") && (_writeOutputAtComplete))
+        {
+            saveImage(Foundation::s2w(_outputFile), uvec2(_dimensions.x, _dimensions.y));
+            AU_INFO("Output command line option is set. Rendered one image to %s, now exiting.",
+                _outputFile.c_str());
+
+#if defined(INTERACTIVE_PLASMA)
+            PostMessage(_hwnd, WM_CLOSE, 0, 0);
+#endif
+        }
+        if (_writeOutputAtComplete)
+        {
+           
+        }
         _pRenderer->waitForTask();
     }
-    _performanceMonitor.endFrame(isComplete, sampleCount);
+    _performanceMonitor.endFrame(isComplete, sampleCount, _camera.eye(), _camera.target(), _lightDirection);
 }
 
 #if defined(INTERACTIVE_PLASMA)

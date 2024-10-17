@@ -54,7 +54,7 @@ public:
     // rendered in the frame.
     // NOTE: It is possible (though unlikely) for rendering to be restarted _and_ completed in a
     // single frame. The order of the operations in this function accounts for that.
-    void endFrame(bool isComplete, int sampleCount)
+    void endFrame(bool isComplete, int sampleCount, vec3 eye, vec3 target, vec3 lightDirection)
     {
         // If rendering was *previously* complete, this frame is likely to be happening long after
         // the previous status update, i.e. the application was idle. In that case, reset the
@@ -117,6 +117,15 @@ public:
                    << " (" << megaraysPerSecond << " MRPS)";
         }
 
+        report << "  | "
+               << " eye( " << eye.x << "," << eye.y << "," << eye.z << " )";
+        report << "  | "
+               << " target( " << target.x << "," << target.y << "," << target.z << " )";
+        report << "  | "
+               << " lightDir( " << lightDirection.x << "," << lightDirection.y << ","
+               << lightDirection.z
+               << " )";
+        
         // Call the status update function.
         if (_statusFunction)
         {
