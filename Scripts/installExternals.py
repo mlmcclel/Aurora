@@ -723,6 +723,22 @@ def InstallSlang(context, force, buildArgs):
 SLANG = Dependency(Slang_INSTALL_FOLDER, Slang_PACKAGE_NAME, InstallSlang, Slang_URL, "slang.h")
 
 ############################################################
+# OIDN
+
+if Windows():
+    OIDN_URL = "https://github.com/OpenImageDenoise/oidn/releases/download/v2.3.0/oidn-2.3.0.x64.windows.zip"
+else:
+    OIDN_URL = "https://github.com/OpenImageDenoise/oidn/releases/download/v2.3.0/oidn-2.3.0.x86_64.linux.tar.gz"
+OIDN_INSTALL_FOLDER = "oidn"
+OIDN_PACKAGE_NAME = "oidn"
+
+def InstallOIDN(context, force, buildArgs):
+    OIDN_SRC_FOLDER = DownloadURL(OIDN_URL, context, force)
+    CopyDirectory(context, OIDN_SRC_FOLDER, OIDN_INSTALL_FOLDER)
+
+OIDN = Dependency(OIDN_INSTALL_FOLDER, OIDN_PACKAGE_NAME, InstallOIDN, OIDN_URL, "oidn.h")
+
+############################################################
 # NRD
 
 NRD_URL = "https://github.com/NVIDIAGameWorks/RayTracingDenoiser.git"
@@ -1048,6 +1064,7 @@ requiredDependencies = [ZLIB,
                         OPENSUBDIV,
                         USD,
                         SLANG,
+                        OIDN,
                         # Excluding NRD and NRI for Aurora 22.11 since denoiser
                         # is disabled for this release
                         # NRD,

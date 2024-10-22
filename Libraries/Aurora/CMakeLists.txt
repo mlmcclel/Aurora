@@ -58,6 +58,13 @@ if(ENABLE_DENOISER)
     find_package(NRI REQUIRED) # NVIDIA Render Interface
 endif()
 
+# Optionally enable Intel OIDN denoiser.
+option(ENABLE_OIDN "Build with support for Intel OIDN denoiser." ON)
+if(ENABLE_OIDN)
+    add_compile_definitions(ENABLE_OIDN=1)
+
+    find_package(oidn REQUIRED) # Intel OIDN Libraries
+endif()
 
 # Public header files
 set(API_HEADERS
@@ -330,6 +337,15 @@ if(WIN32)
         add_dependencies(${PROJECT_NAME} CopyNvidiaDenoiserDLLs)
     endif()
 
+	if(ENABLE_OIDN)
+       add_custom_target(CopyOIDNDLLs ALL
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${OIDN_LIBRARY_DLLS} ${RUNTIME_OUTPUT_DIR}
+        )
+        set_property(TARGET CopyOIDNDLLs PROPERTY FOLDER "Deployment")
+        add_dependencies(CopyOIDNDLLs MakeRuntimeDir)
+        add_dependencies(${PROJECT_NAME} CopyOIDNDLLs)
+	endif()
+
     # Create a custom target that will copy MaterialX libraries to the runtime folder, if MaterialX
     # is enabled.
     if(ENABLE_MATERIALX)
@@ -409,6 +425,7 @@ PRIVATE
     stb::stb
     glm::glm
     Slang::Slang
+	OIDN::OIDN
 )
 
 target_include_directories(${PROJECT_NAME}

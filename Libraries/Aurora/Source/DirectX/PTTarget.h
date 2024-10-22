@@ -36,6 +36,8 @@ public:
     virtual const uvec2& dimensions() const { return _dimensions; };
     virtual void copyFromResource(
         ID3D12Resource* pSource, ID3D12GraphicsCommandList4* pCommandList) = 0;
+    virtual void copyToResource(
+        ID3D12Resource* pTarget, ID3D12GraphicsCommandList4* pCommandList) = 0;
     virtual void present() {};
 
     /// Returns the format of the target.
@@ -70,6 +72,8 @@ public:
 
     void copyFromResource(
         ID3D12Resource* pSource, ID3D12GraphicsCommandList4* pCommandList) override;
+    void copyToResource(
+        ID3D12Resource* pTarget, ID3D12GraphicsCommandList4* pCommandList) override;
     void present() override;
 
 private:
@@ -150,6 +154,8 @@ public:
 
     void copyFromResource(
         ID3D12Resource* pSource, ID3D12GraphicsCommandList4* pCommandList) override;
+    void copyToResource(
+        ID3D12Resource* pTarget, ID3D12GraphicsCommandList4* pCommandList) override;
 
 private:
     size_t bytesPerPixel();

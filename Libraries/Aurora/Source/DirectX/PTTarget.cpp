@@ -110,6 +110,22 @@ void PTWindow::copyFromResource(ID3D12Resource* pSource, ID3D12GraphicsCommandLi
         pBackBufferResource, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PRESENT);
 }
 
+void PTWindow::copyToResource(ID3D12Resource* pTarget, ID3D12GraphicsCommandList4* pCommandList)
+{
+    // Get the resource for the current back buffer (source). The current back buffer changes on
+    // each swap chain Present() call.
+    ID3D12Resource* pBackBufferResource =
+        _backBuffers[_pSwapChain->GetCurrentBackBufferIndex()].resource();
+
+    // Transition the back buffer's resource from a presentable buffer to a copy source, then
+    // copy the renderer's result to the resource, and transition back to presenting.
+    _pRenderer->addTransitionBarrier(
+        pBackBufferResource, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    pCommandList->CopyResource(pTarget, pBackBufferResource);
+    _pRenderer->addTransitionBarrier(
+        pBackBufferResource, D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_PRESENT);
+}
+
 void PTWindow::present()
 {
     // Present the next buffer in the swap chain. Tearing (VRR) is set when vsync is disabled, i.e.
@@ -325,4 +341,49 @@ void PTRenderBuffer::copyFromResource(
     _hasPendingData = true;
 }
 
+void PTRenderBuffer::copyToResource(
+    ID3D12Resource* pTarget, ID3D12GraphicsCommandList4* pCommandList)
+{
+    // Determine the size and stride of the source data, as well as information for copying from it.
+    D3D12_RESOURCE_DESC desc = pTarget->GetDesc();
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT layout;
+    _pRenderer->dxDevice()->GetCopyableFootprints(
+        &desc, 0, 1, 0, &layout, nullptr, nullptr, &_dataSize);
+    _dataStride = layout.Footprint.RowPitch;
+
+    // Create the readback buffer if needed.
+    // NOTE: It is not possible to use a texture buffer for readback, so a plain buffer is used.
+    if (!_pReadbackBuffer)
+    {
+        _pReadbackBuffer = _pRenderer->createBuffer(_dataSize, "Readback Buffer",
+            D3D12_HEAP_TYPE_READBACK, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_COPY_SOURCE);
+    }
+
+    // Use the command list to add a command to copy from the source texture to the readback buffer.
+    CD3DX12_TEXTURE_COPY_LOCATION copySrc(_pReadbackBuffer.Get(), layout);
+    CD3DX12_TEXTURE_COPY_LOCATION copyDest(pTarget);
+    pCommandList->CopyTextureRegion(&copyDest, 0, 0, 0, &copySrc, nullptr);
+
+    // Create a shareable texture
+    if (!_pShareableTexture)
+    {
+        _pShareableTexture = _pRenderer->createTexture(this->_dimensions,
+            PTImage::getDXFormat(this->format()), "Shared Result Texture", false, true);
+
+        // Create a shared handle for the shareable texture
+        auto hr = _pRenderer->dxDevice()->CreateSharedHandle(
+            _pShareableTexture.Get(), NULL, GENERIC_ALL, NULL, &_sharedTextureHandle);
+        if (hr != S_OK)
+        {
+            _sharedTextureHandle = nullptr;
+            AU_WARN("Failed to create a shared handle for PTRenderBuffer");
+        }
+    }
+    // Use the command list to add a command to copy from the source texture to the shareable
+    // texture.
+    CD3DX12_TEXTURE_COPY_LOCATION copyTextureDest(_pShareableTexture.Get());
+    pCommandList->CopyTextureRegion(&copyTextureDest, 0, 0, 0, &copySrc, nullptr);
+
+    _hasPendingData = true;
+}
 END_AURORA

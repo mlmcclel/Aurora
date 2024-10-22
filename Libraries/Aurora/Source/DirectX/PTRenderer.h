@@ -194,6 +194,13 @@ private:
 #if defined(ENABLE_DENOISER)
     unique_ptr<Denoiser> _pDenoiser;
 #endif
+
+
+    // Include OIDN if enabled.
+#if (0) //ENABLE_OIDN
+    unique_ptr<oidn::DeviceRef> _pOIDNdevice;
+#endif
+
     ID3D12ResourcePtr _pDenoisingTexDepthView;
     ID3D12ResourcePtr _pDenoisingTexNormalRoughness;
     ID3D12ResourcePtr _pDenoisingTexBaseColorMetalness;
@@ -201,6 +208,8 @@ private:
     ID3D12ResourcePtr _pDenoisingTexGlossy;
     ID3D12ResourcePtr _pDenoisingTexDiffuseOut;
     ID3D12ResourcePtr _pDenoisingTexGlossyOut;
+    ID3D12ResourcePtr _pDenoisingInputOIDN;
+    ID3D12ResourcePtr _pDenoisingOutputOIDN;
 };
 
 // Creates (if needed) and an updates a GPU constant buffer with data supplied by the caller.

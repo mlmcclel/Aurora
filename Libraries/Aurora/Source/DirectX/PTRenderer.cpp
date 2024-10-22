@@ -29,6 +29,13 @@
 #include "PTScene.h"
 #include "PTShaderLibrary.h"
 
+// Include OIDN if enabled
+#if (ENABLE_OIDN)
+#pragma warning(disable : 4458)
+#include "D:\github\Aurora\AuroraExternals\oidn\include\OpenImageDenoise\oidn.hpp"
+#pragma warning(default : 4458) // C4458 enabled after Test ends
+#endif
+
 #if ENABLE_MATERIALX
 #include "MaterialX/MaterialGenerator.h"
 #endif
@@ -1002,6 +1009,8 @@ void PTRenderer::updateDenoisingResources()
             _pDenoisingTexGlossy     = createTexture(dims, kGlossyFormat, "Glossy Input", true);
             _pDenoisingTexDiffuseOut = createTexture(dims, kDiffuseFormat, "Diffuse Output", true);
             _pDenoisingTexGlossyOut  = createTexture(dims, kGlossyFormat, "Glossy Output", true);
+            _pDenoisingInputOIDN     = createTexture(dims, kNormalRoughnessFormat, "OIDN Input Buffer", true, true);
+            _pDenoisingOutputOIDN    = createTexture(dims, kNormalRoughnessFormat, "OIDN Output Buffer", true, true);
         }
     }
     else
@@ -1046,6 +1055,7 @@ void PTRenderer::updateDenoisingResources()
         createUAV(_pDenoisingTexGlossy.Get(), handle);
         createUAV(_pDenoisingTexDiffuseOut.Get(), handle);
         createUAV(_pDenoisingTexGlossyOut.Get(), handle);
+        //createUAV(_pDenoisingOIDN.Get(), handle);
     }
 
 #if defined(ENABLE_DENOISER)
@@ -1090,6 +1100,49 @@ void PTRenderer::updateDenoisingResources()
         _pDenoiser.reset();
     }
 #endif // ENABLE_DENOISER
+
+#if defined(ENABLE_DENOISER) // ENABLE_OIDN
+    // Create or destroy the denoiser as needed. This can depend on the denoising resources
+    // created above.
+    if (_isDenoisingEnabled)
+    {
+        // Create a new denoiser if needed.
+        bool isNewDenoiser = false;
+        if (!_pDenoiser)
+        {
+            _pDenoiser = make_unique<Denoiser>(_pDXDevice.Get(), _pCommandQueue.Get(), _taskCount);
+            isNewDenoiser = true;
+        }
+
+        // If the denoiser is new, or the dimensions have changed (i.e. new resource),
+        // initialize the denoiser.
+        if (isNewDenoiser || _isDimensionsChanged)
+        {
+            // Collect the denoising textures.
+            // clang-format off
+            Denoiser::Textures textures =
+            {
+                _pDenoisingTexDepthView.Get(),
+                _pDenoisingTexNormalRoughness.Get(),
+                _pDenoisingTexDiffuse.Get(),
+                _pDenoisingTexGlossy.Get(),
+                _pDenoisingTexDiffuseOut.Get(),
+                _pDenoisingTexGlossyOut.Get()
+            };
+            // clang-format on
+
+            // Initialize the denoiser.
+            _pDenoiser->initialize(_outputDimensions, textures);
+        }
+    }
+    else if (_pDenoiser)
+    {
+        // Wait for tasks to complete before destroying the denoiser, as internal resources may
+        // still be in use.
+        waitForTask();
+        _pDenoiser.reset();
+    }
+#endif // ENABLE_OIDN
 }
 
 void PTRenderer::prepareRayDispatch(D3D12_DISPATCH_RAYS_DESC& dispatchRaysDesc)
@@ -1225,6 +1278,51 @@ void PTRenderer::submitRayDispatch(
     // Submit the command list.
     submitCommandList();
 }
+//void SaveBufferAsJpeg(ID3D12ResourcePtr readbackBuffer, UINT width, UINT height, LPCWSTR filename)
+//{
+//    ComPtr<IWICImagingFactory> wicFactory;
+//    ComPtr<IWICBitmapEncoder> encoder;
+//    ComPtr<IWICBitmapFrameEncode> frame;
+//    ComPtr<IWICStream> stream;
+//
+//    // Initialize WIC factory
+//    CoInitialize(nullptr);
+//    CoCreateInstance(
+//        CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&wicFactory));
+//
+//    // Create stream to save the image
+//    wicFactory->CreateStream(&stream);
+//    stream->InitializeFromFilename(filename, GENERIC_WRITE);
+//
+//    // Create JPEG encoder
+//    wicFactory->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &encoder);
+//    encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache);
+//
+//    // Create a frame and set its properties
+//    encoder->CreateNewFrame(&frame, nullptr);
+//    frame->Initialize(nullptr);
+//    frame->SetSize(width, height);
+//
+//    WICPixelFormatGUID format = GUID_WICPixelFormat32bppRGBA;
+//    frame->SetPixelFormat(&format);
+//
+//    // Map the readback buffer and write to the frame
+//    void* data;
+//    D3D12_RANGE readRange = { 0, width * height * 3 };
+//    readbackBuffer->Map(0, &readRange, &data);
+//
+//    frame->WritePixels(height, width * 3, width * height * 3, static_cast<BYTE*>(data));
+//
+//    readbackBuffer->Unmap(0, nullptr);
+//
+//    // Commit the frame and the encoder
+//    frame->Commit();
+//    encoder->Commit();
+//    stream->Commit(STGC_DEFAULT);
+//
+//    // Clean up
+//    CoUninitialize();
+//}
 
 #if defined(ENABLE_DENOISER)
 void PTRenderer::submitDenoising(bool isRestartRequested)
@@ -1254,8 +1352,224 @@ void PTRenderer::submitDenoising(bool isRestartRequested)
     // Submit the command list.
     submitCommandList();
 }
+#elif(ENABLE_OIDN)
+void PTRenderer::submitDenoising(bool /*isRestart*/)
+{
+
+    const char* errorMessage;
+    ID3D12Device5* device = _pDevice->device();
+    LUID luid             = device->GetAdapterLuid();
+    // Begin a command list.
+    ID3D12GraphicsCommandList4Ptr pCommandList = beginCommandList();
+
+    // Initialize the denoiser device
+    oidn::DeviceRef oidn_device = oidn::newDevice(oidn::LUID { luid.LowPart, luid.HighPart });
+    if (oidn_device.getError() != oidn::Error::None)
+        throw std::runtime_error("Failed to create OIDN device");
+    oidn_device.commit();
+    if (oidn_device.getError() != oidn::Error::None)
+        throw std::runtime_error("Failed to commit OIDN device");
+
+    // Find a compatible external memory handle type
+    const auto oidn_external_mem_type =
+        oidn_device.get<oidn::ExternalMemoryTypeFlags>("externalMemoryTypes");
+    if (!(oidn_external_mem_type & oidn::ExternalMemoryTypeFlag::OpaqueWin32))
+        throw std::runtime_error("Failed to find compatible memory type for OIDN");
+
+    // Initialize the denoiser filter
+    oidn::FilterRef oidn_filter = oidn_device.newFilter("RT");
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+
+    // uvec2& dims           = _outputDimensions;
+    // const DXGI_FORMAT kDepthViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    // accum_buffer = createTexture(dims, kDepthViewFormat, "Glossy Input", true, true); // UAV and
+    // sharable
+    _pTargetFinal.get()->copyToResource(_pDenoisingInputOIDN.Get(), _pCommandList.Get());
+    // Submit the command list.
+
+    HANDLE OIDN_input_buffer_handle = nullptr;
+    device->CreateSharedHandle(
+        _pDenoisingInputOIDN.Get(), nullptr, GENERIC_ALL, nullptr, &OIDN_input_buffer_handle);
+    auto input_buffer =
+        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_input_buffer_handle,
+            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
+    HANDLE OIDN_output_buffer_handle = nullptr;
+    device->CreateSharedHandle(
+        _pDenoisingOutputOIDN.Get(), nullptr, GENERIC_ALL, nullptr, &OIDN_output_buffer_handle);
+
+    auto output_buffer =
+        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_output_buffer_handle,
+            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+    submitCommandList();
+
+    // SaveBufferAsJpeg(
+    //     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
+    //     L"InputBufferBefore.jpg");
+    // SaveBufferAsJpeg(
+    //     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
+    //     L"OutputBufferBefore.jpg");
+
+    oidn_filter.setImage("color", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+    oidn_filter.setImage("albedo", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+    oidn_filter.setImage("normal", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+    oidn_filter.setImage("output", output_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0, 3 * sizeof(float));
+
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+
+    oidn_filter.set("hdr", true);
+    oidn_filter.set("quality", oidn::Quality::Balanced);
+
+    oidn_filter.commit();
+
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage);
+
+    copyTextureToTarget(_pDenoisingOutputOIDN.Get(), _pTargetFinal.get());
+    // Submit the command list.
+    submitCommandList();
+    /*   SaveBufferAsJpeg(
+           _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"InputBufferAfter.jpg");
+       SaveBufferAsJpeg(
+           _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
+       L"OutputBufferAfter.jpg");     */
+
+    // HANDLE accum_buffer_handle = nullptr;
+    // checkHR(device->CreateSharedHandle(_pTexAccumulation->GetGPUVirtualAddress(), nullptr,
+    //    GENERIC_ALL, nullptr, &accum_buffer_handle));
+    // filter.setImage("color", _pTexFinal->(), olor->getFormat(), color->getW(), color->getH());
+
+    // device.commit();
+
+    //// Create buffers for input/output images accessible by both host (CPU) and device (CPU/GPU)
+    // oidn::BufferRef colorBuf =
+    //     device.newBuffer(_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float));
+    // filter.setImage("color", color->getBuffer(), color->getFormat(), bench.width, bench.height);
+}
 #else
-void PTRenderer::submitDenoising(bool /*isRestart*/) {}
+void PTRenderer::submitDenoising(bool /*isRestart*/) {
+    
+    const char* errorMessage;
+    ID3D12Device5* device = _pDevice->device();
+    LUID luid             = device->GetAdapterLuid();
+    // Begin a command list.
+    ID3D12GraphicsCommandList4Ptr pCommandList = beginCommandList();  
+
+    // Initialize the denoiser device
+    oidn::DeviceRef oidn_device = oidn::newDevice(oidn::LUID { luid.LowPart, luid.HighPart });
+    if (oidn_device.getError() != oidn::Error::None)
+        throw std::runtime_error("Failed to create OIDN device");
+    oidn_device.commit();
+    if (oidn_device.getError() != oidn::Error::None)
+        throw std::runtime_error("Failed to commit OIDN device");
+
+    // Find a compatible external memory handle type
+    const auto oidn_external_mem_type =
+        oidn_device.get<oidn::ExternalMemoryTypeFlags>("externalMemoryTypes");
+    if (!(oidn_external_mem_type & oidn::ExternalMemoryTypeFlag::OpaqueWin32))
+        throw std::runtime_error("Failed to find compatible memory type for OIDN");
+     
+    
+    // Initialize the denoiser filter
+    oidn::FilterRef oidn_filter = oidn_device.newFilter("RT");
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+
+    //uvec2& dims           = _outputDimensions;
+    //const DXGI_FORMAT kDepthViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+    //accum_buffer = createTexture(dims, kDepthViewFormat, "Glossy Input", true, true); // UAV and sharable
+    _pTargetFinal.get()->copyToResource(_pDenoisingInputOIDN.Get(), _pCommandList.Get());
+    // Submit the command list.
+
+    HANDLE OIDN_input_buffer_handle = nullptr;
+    device->CreateSharedHandle(
+                _pDenoisingInputOIDN.Get(),
+                nullptr,
+                GENERIC_ALL,
+                nullptr, &OIDN_input_buffer_handle);
+    auto input_buffer =
+        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_input_buffer_handle,
+            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
+    HANDLE OIDN_output_buffer_handle = nullptr;
+    device->CreateSharedHandle(
+                _pDenoisingOutputOIDN.Get(), 
+                nullptr, 
+                GENERIC_ALL, 
+                nullptr, 
+                &OIDN_output_buffer_handle);
+
+    auto output_buffer = 
+        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_output_buffer_handle,
+            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+    submitCommandList();
+
+    //SaveBufferAsJpeg(
+    //    _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"InputBufferBefore.jpg");
+   // SaveBufferAsJpeg(
+   //     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"OutputBufferBefore.jpg");
+
+    oidn_filter.setImage("color", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+    oidn_filter.setImage("albedo", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+    oidn_filter.setImage("normal", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+    oidn_filter.setImage("output", output_buffer, oidn::Format::Float3, _outputDimensions.x,
+        _outputDimensions.y, 0, 3* sizeof(float));
+
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+
+    oidn_filter.set("hdr", true);
+    oidn_filter.set("quality", oidn::Quality::Balanced);
+
+    oidn_filter.commit();
+
+    if (oidn_device.getError(errorMessage) != oidn::Error::None)
+        throw std::runtime_error(errorMessage); 
+    
+    copyTextureToTarget(_pDenoisingOutputOIDN.Get(), _pTargetFinal.get());
+    // Submit the command list.
+    submitCommandList();
+ /*   SaveBufferAsJpeg(
+        _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"InputBufferAfter.jpg");
+    SaveBufferAsJpeg(
+        _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"OutputBufferAfter.jpg");     */
+    
+    // HANDLE accum_buffer_handle = nullptr;
+    //checkHR(device->CreateSharedHandle(_pTexAccumulation->GetGPUVirtualAddress(), nullptr,
+    //    GENERIC_ALL, nullptr, &accum_buffer_handle));
+    //filter.setImage("color", _pTexFinal->(), olor->getFormat(), color->getW(), color->getH());
+
+    //device.commit();
+
+    //// Create buffers for input/output images accessible by both host (CPU) and device (CPU/GPU)
+    //oidn::BufferRef colorBuf =
+    //    device.newBuffer(_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float));
+    //filter.setImage("color", color->getBuffer(), color->getFormat(), bench.width, bench.height);
+    
+ }
 #endif // ENABLE_DENOISER
 
 void PTRenderer::submitAccumulation(uint32_t sampleIndex)
