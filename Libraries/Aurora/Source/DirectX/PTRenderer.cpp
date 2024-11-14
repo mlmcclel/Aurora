@@ -1360,7 +1360,7 @@ void PTRenderer::submitDenoising(bool /*isRestart*/)
     ID3D12Device5* device = _pDevice->device();
     LUID luid             = device->GetAdapterLuid();
     // Begin a command list.
-    ID3D12GraphicsCommandList4Ptr pCommandList = beginCommandList();
+    //ID3D12GraphicsCommandList4Ptr pCommandList = beginCommandList();
 
     // Initialize the denoiser device
     oidn::DeviceRef oidn_device = oidn::newDevice(oidn::LUID { luid.LowPart, luid.HighPart });
@@ -1385,62 +1385,62 @@ void PTRenderer::submitDenoising(bool /*isRestart*/)
     // const DXGI_FORMAT kDepthViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
     // accum_buffer = createTexture(dims, kDepthViewFormat, "Glossy Input", true, true); // UAV and
     // sharable
-    _pTargetFinal.get()->copyToResource(_pDenoisingInputOIDN.Get(), _pCommandList.Get());
-    // Submit the command list.
+    //_pTargetFinal.get()->copyToResource(_pDenoisingInputOIDN.Get(), _pCommandList.Get());
+    //// Submit the command list.
 
-    HANDLE OIDN_input_buffer_handle = nullptr;
-    device->CreateSharedHandle(
-        _pDenoisingInputOIDN.Get(), nullptr, GENERIC_ALL, nullptr, &OIDN_input_buffer_handle);
-    auto input_buffer =
-        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_input_buffer_handle,
-            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
-    HANDLE OIDN_output_buffer_handle = nullptr;
-    device->CreateSharedHandle(
-        _pDenoisingOutputOIDN.Get(), nullptr, GENERIC_ALL, nullptr, &OIDN_output_buffer_handle);
+    //HANDLE OIDN_input_buffer_handle = nullptr;
+    //device->CreateSharedHandle(
+    //    _pDenoisingInputOIDN.Get(), nullptr, GENERIC_ALL, nullptr, &OIDN_input_buffer_handle);
+    //auto input_buffer =
+    //    oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_input_buffer_handle,
+    //        nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
+    //HANDLE OIDN_output_buffer_handle = nullptr;
+    //device->CreateSharedHandle(
+    //    _pDenoisingOutputOIDN.Get(), nullptr, GENERIC_ALL, nullptr, &OIDN_output_buffer_handle);
 
-    auto output_buffer =
-        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_output_buffer_handle,
-            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage);
-    submitCommandList();
+    //auto output_buffer =
+    //    oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_output_buffer_handle,
+    //        nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
+    //if (oidn_device.getError(errorMessage) != oidn::Error::None)
+    //    throw std::runtime_error(errorMessage);
+    //submitCommandList();
 
-    // SaveBufferAsJpeg(
-    //     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
-    //     L"InputBufferBefore.jpg");
-    // SaveBufferAsJpeg(
-    //     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
-    //     L"OutputBufferBefore.jpg");
+    //// SaveBufferAsJpeg(
+    ////     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
+    ////     L"InputBufferBefore.jpg");
+    //// SaveBufferAsJpeg(
+    ////     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y,
+    ////     L"OutputBufferBefore.jpg");
 
-    oidn_filter.setImage("color", input_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage);
-    oidn_filter.setImage("albedo", input_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage);
-    oidn_filter.setImage("normal", input_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage);
-    oidn_filter.setImage("output", output_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0, 3 * sizeof(float));
+    //oidn_filter.setImage("color", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+    //    _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    //if (oidn_device.getError(errorMessage) != oidn::Error::None)
+    //    throw std::runtime_error(errorMessage);
+    //oidn_filter.setImage("albedo", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+    //    _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    //if (oidn_device.getError(errorMessage) != oidn::Error::None)
+    //    throw std::runtime_error(errorMessage);
+    //oidn_filter.setImage("normal", input_buffer, oidn::Format::Float3, _outputDimensions.x,
+    //    _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
+    //if (oidn_device.getError(errorMessage) != oidn::Error::None)
+    //    throw std::runtime_error(errorMessage);
+    //oidn_filter.setImage("output", output_buffer, oidn::Format::Float3, _outputDimensions.x,
+    //    _outputDimensions.y, 0, 3 * sizeof(float));
 
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage);
+    //if (oidn_device.getError(errorMessage) != oidn::Error::None)
+    //    throw std::runtime_error(errorMessage);
 
-    oidn_filter.set("hdr", true);
-    oidn_filter.set("quality", oidn::Quality::Balanced);
+    //oidn_filter.set("hdr", true);
+    //oidn_filter.set("quality", oidn::Quality::Balanced);
 
-    oidn_filter.commit();
+    //oidn_filter.commit();
 
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage);
+    //if (oidn_device.getError(errorMessage) != oidn::Error::None)
+    //    throw std::runtime_error(errorMessage);
 
-    copyTextureToTarget(_pDenoisingOutputOIDN.Get(), _pTargetFinal.get());
-    // Submit the command list.
-    submitCommandList();
+    //copyTextureToTarget(_pDenoisingOutputOIDN.Get(), _pTargetFinal.get());
+    //// Submit the command list.
+    //submitCommandList();
     /*   SaveBufferAsJpeg(
            _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"InputBufferAfter.jpg");
        SaveBufferAsJpeg(
@@ -1460,116 +1460,7 @@ void PTRenderer::submitDenoising(bool /*isRestart*/)
     // filter.setImage("color", color->getBuffer(), color->getFormat(), bench.width, bench.height);
 }
 #else
-void PTRenderer::submitDenoising(bool /*isRestart*/) {
-    
-    const char* errorMessage;
-    ID3D12Device5* device = _pDevice->device();
-    LUID luid             = device->GetAdapterLuid();
-    // Begin a command list.
-    ID3D12GraphicsCommandList4Ptr pCommandList = beginCommandList();  
-
-    // Initialize the denoiser device
-    oidn::DeviceRef oidn_device = oidn::newDevice(oidn::LUID { luid.LowPart, luid.HighPart });
-    if (oidn_device.getError() != oidn::Error::None)
-        throw std::runtime_error("Failed to create OIDN device");
-    oidn_device.commit();
-    if (oidn_device.getError() != oidn::Error::None)
-        throw std::runtime_error("Failed to commit OIDN device");
-
-    // Find a compatible external memory handle type
-    const auto oidn_external_mem_type =
-        oidn_device.get<oidn::ExternalMemoryTypeFlags>("externalMemoryTypes");
-    if (!(oidn_external_mem_type & oidn::ExternalMemoryTypeFlag::OpaqueWin32))
-        throw std::runtime_error("Failed to find compatible memory type for OIDN");
-     
-    
-    // Initialize the denoiser filter
-    oidn::FilterRef oidn_filter = oidn_device.newFilter("RT");
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-
-    //uvec2& dims           = _outputDimensions;
-    //const DXGI_FORMAT kDepthViewFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-    //accum_buffer = createTexture(dims, kDepthViewFormat, "Glossy Input", true, true); // UAV and sharable
-    _pTargetFinal.get()->copyToResource(_pDenoisingInputOIDN.Get(), _pCommandList.Get());
-    // Submit the command list.
-
-    HANDLE OIDN_input_buffer_handle = nullptr;
-    device->CreateSharedHandle(
-                _pDenoisingInputOIDN.Get(),
-                nullptr,
-                GENERIC_ALL,
-                nullptr, &OIDN_input_buffer_handle);
-    auto input_buffer =
-        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_input_buffer_handle,
-            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
-    HANDLE OIDN_output_buffer_handle = nullptr;
-    device->CreateSharedHandle(
-                _pDenoisingOutputOIDN.Get(), 
-                nullptr, 
-                GENERIC_ALL, 
-                nullptr, 
-                &OIDN_output_buffer_handle);
-
-    auto output_buffer = 
-        oidn_device.newBuffer(oidn::ExternalMemoryTypeFlag::OpaqueWin32, OIDN_output_buffer_handle,
-            nullptr, (_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float)));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-    submitCommandList();
-
-    //SaveBufferAsJpeg(
-    //    _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"InputBufferBefore.jpg");
-   // SaveBufferAsJpeg(
-   //     _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"OutputBufferBefore.jpg");
-
-    oidn_filter.setImage("color", input_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-    oidn_filter.setImage("albedo", input_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-    oidn_filter.setImage("normal", input_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0 * sizeof(float), 3 * sizeof(float));
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-    oidn_filter.setImage("output", output_buffer, oidn::Format::Float3, _outputDimensions.x,
-        _outputDimensions.y, 0, 3* sizeof(float));
-
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-
-    oidn_filter.set("hdr", true);
-    oidn_filter.set("quality", oidn::Quality::Balanced);
-
-    oidn_filter.commit();
-
-    if (oidn_device.getError(errorMessage) != oidn::Error::None)
-        throw std::runtime_error(errorMessage); 
-    
-    copyTextureToTarget(_pDenoisingOutputOIDN.Get(), _pTargetFinal.get());
-    // Submit the command list.
-    submitCommandList();
- /*   SaveBufferAsJpeg(
-        _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"InputBufferAfter.jpg");
-    SaveBufferAsJpeg(
-        _pDenoisingInputOIDN, _outputDimensions.x, _outputDimensions.y, L"OutputBufferAfter.jpg");     */
-    
-    // HANDLE accum_buffer_handle = nullptr;
-    //checkHR(device->CreateSharedHandle(_pTexAccumulation->GetGPUVirtualAddress(), nullptr,
-    //    GENERIC_ALL, nullptr, &accum_buffer_handle));
-    //filter.setImage("color", _pTexFinal->(), olor->getFormat(), color->getW(), color->getH());
-
-    //device.commit();
-
-    //// Create buffers for input/output images accessible by both host (CPU) and device (CPU/GPU)
-    //oidn::BufferRef colorBuf =
-    //    device.newBuffer(_outputDimensions.x * _outputDimensions.y * 3 * sizeof(float));
-    //filter.setImage("color", color->getBuffer(), color->getFormat(), bench.width, bench.height);
-    
- }
+void PTRenderer::submitDenoising(bool /*isRestart*/) {}
 #endif // ENABLE_DENOISER
 
 void PTRenderer::submitAccumulation(uint32_t sampleIndex)
